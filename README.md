@@ -1,36 +1,49 @@
 # Elevation
 
-スマートフォンのGPSで移動を記録し、累積上昇標高と累積下降標高を計算するAndroidアプリです。
+Pixel Watch / Fitbit が Health Connect に保存したウォーキング記録から、日ごとの累積標高を集計する Android + Wear OS アプリです。
 
-## 開発状況
+## 構成
 
-企画・要件整理の段階です。アプリの実装はまだありません。対象プラットフォームはAndroidです。
+- `mobile`: Health Connect から過去7日間のウォーキングと獲得標高を読み、日別に表示
+- `wear`: スマホから Wear OS Data Layer で同期された本日の累積標高を表示
 
-## 確定した方針
+端末内で完結し、サーバーへ健康データを送信しません。
 
-- Androidアプリとして開発する。
-- スマートフォンのGPSで移動を記録する。
-- 記録した標高データから累積標高を計算する。
+## 必要環境
 
-## 初期機能案
+- Android Studio（JDK 17同梱版）
+- Android SDK 35
+- Android 8.0以上のスマートフォン
+- Wear OS 3以上の Pixel Watch または Wear OS エミュレーター
 
-- 記録の開始・停止。
-- 累積上昇標高と累積下降標高をメートル単位で表示。
-- 記録中、停止中、位置情報待ち、権限不足などの状態表示。
-- 標高欠損や精度不足を明示し、細かな揺れによる過大計算を抑える処理を検証。
+## 実行
 
-## 計算の基本
+1. Android Studioでこのフォルダーを開いてGradle Syncを実行します。
+2. `mobile` をスマートフォンへ、`wear` をペアリング済みPixel Watchへインストールします。
+3. スマートフォンで「Health Connectを許可」を押し、運動と獲得標高の読み取りを許可します。
+4. Fitbit側で「FitbitとHealth Connect」を有効にし、ウォーキング記録を同期します。
+5. 「最新の結果に更新」を押すと、今日の値が時計にも同期されます。
+6. GPXを書き出す場合は「今日のGPXをDriveへ書き出す」または「昨日のGPXをDriveへ書き出す」を押します。
+7. 毎日のバックアップを使う場合は「毎日のGPX自動バックアップをONにする」を押し、GoogleアカウントとDrive権限を許可します。
 
-連続する有効な標高点の差について、正の差を上昇量として合計し、負の差の絶対値を下降量として合計します。例えば `100 → 120 → 110 → 140 m` では、補正なしの場合、累積上昇は `50 m`、累積下降は `10 m` です。開始点と終了点の標高差とは異なります。
+## 集計仕様
 
-GPS由来の高度について、単位と高さの基準を確認します。区間の切れ目や欠損をまたぐ差分の扱い、ノイズ補正の方式とパラメータは実装前に決定し、停止時と実移動時の両方で検証します。
+- Health Connectの `ExerciseSessionRecord` のうち `EXERCISE_TYPE_WALKING` のみ対象
+- 重複したウォーキング時間帯は結合し、二重集計を防止
+- 各時間帯の `ElevationGainedRecord.ELEVATION_GAINED_TOTAL` を合計
+- 日境界は端末の現在のタイムゾーンを使用
 
-## 未決定の事項
+Health Connectに獲得標高が書き込まれていないウォーキングは0mになります。
 
-- Androidの対応バージョンと開発技術。
-- 画面消灯時の記録継続、記録保存・履歴、地図表示の範囲。
-- 測位間隔、精度の判定条件、ノイズ補正方式。
+## GPX / Driveバックアップ
 
-## 開発の進め方
+- GPXファイル名は `walking-YYYY-MM-DD.gpx`
+- 自動バックアップはAndroid標準APIのJobSchedulerで毎日 02:30 ごろに前日分をGoogle Driveへ保存
+- Androidの省電力制御により、実行時刻は多少ずれることがあります
+- Drive連携にはGoogle Cloud ConsoleでDrive APIとAndroid OAuthクライアントの設定が必要です
 
-[GitHub Issues](https://github.com/alucky511/Elevation/issues)で要件とタスクを管理します。Androidの基盤、GPS記録、計算処理、結果画面の順に実装します。コード変更はブランチとPull Requestで確認します。
+Health Connectの仕様上、他アプリが作成した運動ルートはバックグラウンドで読めない場合があります。Pixel Watch / Fitbitが作成したルートで同意が必要になった場合、自動バックアップは通知を出し、アプリ上の手動書き出しでルート読み取り同意を求めます。
+
+## セキュリティ
+
+セキュリティ方針と外部依存の扱いは [docs/security.md](docs/security.md) にまとめています。
