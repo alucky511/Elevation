@@ -24,3 +24,20 @@ jobs:
         run: sdkmanager 'platforms;android-35' 'platforms;android-36' 'build-tools;35.0.0'
       - name: Unit tests, debug builds and lint
         run: gradle :mobile:testDebugUnitTest :wear:testDebugUnitTest :mobile:assembleDebug :wear:assembleDebug :mobile:lintDebug :wear:lintDebug --stacktrace
+      - name: Save test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: |
+            mobile/build/reports/
+            mobile/build/test-results/
+            wear/build/reports/
+            wear/build/test-results/
+      - name: Save debug APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: elevation-debug-apks
+          path: |
+            mobile/build/outputs/apk/debug/*.apk
+            wear/build/outputs/apk/debug/*.apk

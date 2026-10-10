@@ -29,3 +29,6 @@ Health Connectのウォーキング獲得標高を優先し、合計0mの場合�
 6. 実ルートの集計値を比較し、手動／自動GPXの権限・欠損データを検証。
 
 アイコン設計基準: https://developer.android.com/develop/ui/compose/system/icon_design_adaptive
+
+## ビルド互換性
+Android 8.0で利用できないwindowLightNavigationBar属性の明示指定を除去しました。暗色テーマの既定動作を使用し、minSdk 26を維持します。
