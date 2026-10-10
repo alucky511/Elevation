@@ -1,22 +1,37 @@
 package com.elevation.wear
 
 import android.content.Context
+import android.content.Intent
 import com.google.android.gms.wearable.DataMap
-
-data class WearElevation(val date: String, val meters: Double, val walkingCount: Int, val updatedAt: Long)
 
 object ElevationStore {
     private const val PREFS = "elevation"
     const val ACTION_UPDATED = "com.elevation.wear.UPDATED"
 
+    fun decode(map: DataMap): WearElevation? = runCatching {
+        if (!listOf("date", "meters", "walkingCount", "updatedAt").all(map::containsKey)) return null
+        WearElevation(
+            map.getString("date") ?: return null,
+            map.getDouble("meters"),
+            map.getInt("walkingCount"),
+            map.getLong("updatedAt"),
+        ).takeIf { it.isValid() }
+    }.getOrNull()
+
     fun save(context: Context, map: DataMap) {
+        decode(map)?.let { save(context, it) }
+    }
+
+    @Synchronized
+    fun save(context: Context, incoming: WearElevation) {
+        if (!incoming.isNewerThan(read(context))) return
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putString("date", map.getString("date"))
-            .putLong("meters", map.getDouble("meters").toBits())
-            .putInt("walkingCount", map.getInt("walkingCount"))
-            .putLong("updatedAt", map.getLong("updatedAt"))
+            .putString("date", incoming.date)
+            .putLong("meters", incoming.meters.toBits())
+            .putInt("walkingCount", incoming.walkingCount)
+            .putLong("updatedAt", incoming.updatedAt)
             .apply()
-        context.sendBroadcast(android.content.Intent(ACTION_UPDATED).setPackage(context.packageName))
+        context.sendBroadcast(Intent(ACTION_UPDATED).setPackage(context.packageName))
     }
 
     fun read(context: Context): WearElevation? {
@@ -27,6 +42,6 @@ object ElevationStore {
             Double.fromBits(prefs.getLong("meters", 0L)),
             prefs.getInt("walkingCount", 0),
             prefs.getLong("updatedAt", 0L),
-        )
+        ).takeIf { it.isValid() }
     }
 }

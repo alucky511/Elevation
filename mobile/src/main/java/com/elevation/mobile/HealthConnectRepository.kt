@@ -6,7 +6,6 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.ElevationGainedRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.request.AggregateRequest
-import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import java.time.Instant
 import java.time.LocalDate
@@ -41,24 +40,8 @@ class HealthConnectRepository(context: Context) {
         )
     }
 
-    private suspend fun readWalkingSessions(start: Instant, end: Instant): List<ExerciseSessionRecord> {
-        val result = mutableListOf<ExerciseSessionRecord>()
-        var token: String? = null
-        do {
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = ExerciseSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, end),
-                    pageToken = token,
-                )
-            )
-            result += response.records.filter {
-                it.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
-            }
-            token = response.pageToken
-        } while (token != null)
-        return result
-    }
+    private suspend fun readWalkingSessions(start: Instant, end: Instant): List<ExerciseSessionRecord> =
+        WalkingSessionReader(client).read(TimeWindow(start, end))
 
     private suspend fun aggregateElevation(window: TimeWindow): Double {
         val response = client.aggregate(

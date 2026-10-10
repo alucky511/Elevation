@@ -4,7 +4,7 @@ plugins {
 }
 android {
     namespace = "com.elevation.wear"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.elevation"
         minSdk = 30
@@ -19,6 +19,7 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
 }

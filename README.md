@@ -1,49 +1,38 @@
 # Elevation
 
-Pixel Watch / Fitbit が Health Connect に保存したウォーキング記録から、日ごとの累積標高を集計する Android + Wear OS アプリです。
+Pixel Watch / Fitbit が Health Connect に保存したウォーキングから、今日の累積上昇標高を表示する Android + Wear OS アプリです。スマートフォン自身でGPS記録を開始するアプリではありません。
 
-## 構成
+## 構成と集計
 
-- `mobile`: Health Connect から過去7日間のウォーキングと獲得標高を読み、日別に表示
-- `wear`: スマホから Wear OS Data Layer で同期された本日の累積標高を表示
+- `mobile`: 今日のウォーキング区間を結合し、Health Connectの獲得標高を集計。0mの場合は、ユーザーが読み取りを許可した運動ルートの高度から推定します。
+- `wear`: スマートフォンからData Layer経由で届いた今日の値を表示。過去日の値は「-- m」と最終記録日を表示し、今日の値と区別します。
+- 獲得標高は上りの合計です。下降量や現在地の標高は表示しません。
+- ルート補完は5点移動平均と差分フィルター（0.75〜30m）を使う推定値です。高度欠損や垂直精度30m超の点は区間を分割します。実測による精度保証はありません。
+- ルート補完時の重複セッションや日付をまたぐルートの扱いは、[レビュー記録](docs/implementation-review.md)の残課題を参照してください。
 
-端末内で完結し、サーバーへ健康データを送信しません。
+## 開発・実行
 
-## 必要環境
+JDK 17、Android SDK 36、Gradle 8.11.1を使用します。スマートフォンはAndroid 8.0以上（Health Connectの提供状況にも依存）、時計はWear OS 3以上が対象です。
 
-- Android Studio（JDK 17同梱版）
-- Android SDK 35
-- Android 8.0以上のスマートフォン
-- Wear OS 3以上の Pixel Watch または Wear OS エミュレーター
+1. Android Studioで開き、Gradle Syncを実行します。
+2. `mobile`と`wear`を同じ署名でビルドし、スマートフォンとペアリングした時計にそれぞれインストールします。
+3. FitbitからHealth Connectへの同期と、アプリの運動・獲得標高読み取り権限を許可します。
+4. スマホで更新し、時計で今日の値を確認します。「送信済み」は時計での受信確認を意味しません。
 
-## 実行
+Windowsでの検証:
 
-1. Android Studioでこのフォルダーを開いてGradle Syncを実行します。
-2. `mobile` をスマートフォンへ、`wear` をペアリング済みPixel Watchへインストールします。
-3. スマートフォンで「Health Connectを許可」を押し、運動と獲得標高の読み取りを許可します。
-4. Fitbit側で「FitbitとHealth Connect」を有効にし、ウォーキング記録を同期します。
-5. 「最新の結果に更新」を押すと、今日の値が時計にも同期されます。
-6. GPXを書き出す場合は「今日のGPXをDriveへ書き出す」または「昨日のGPXをDriveへ書き出す」を押します。
-7. 毎日のバックアップを使う場合は「毎日のGPX自動バックアップをONにする」を押し、GoogleアカウントとDrive権限を許可します。
+```powershell
+.\gradlew.bat :mobile:testDebugUnitTest :wear:testDebugUnitTest :mobile:assembleDebug :wear:assembleDebug :mobile:lintDebug :wear:lintDebug
+```
 
-## 集計仕様
+GitHub Actionsでも同じテスト・ビルド・Lintを実行します。
 
-- Health Connectの `ExerciseSessionRecord` のうち `EXERCISE_TYPE_WALKING` のみ対象
-- 重複したウォーキング時間帯は結合し、二重集計を防止
-- 各時間帯の `ElevationGainedRecord.ELEVATION_GAINED_TOTAL` を合計
-- 日境界は端末の現在のタイムゾーンを使用
+## GPXとDrive
 
-Health Connectに獲得標高が書き込まれていないウォーキングは0mになります。
+手動書き出しはAndroidの保存先選択画面を使用し、端末または利用可能なGoogle Driveへ `walking-YYYY-MM-DD.gpx` を保存します。自動バックアップは任意で有効化し、JobSchedulerで毎日02:30以降に前日分をDriveへ保存します。省電力制御、Health Connectのバックグラウンド権限やルート同意によって完了しない場合があります。
 
-## GPX / Driveバックアップ
+標高集計は端末内で処理します。Drive保存を選択・有効化した場合、GPXに含まれる位置・時刻・高度をDriveへ送信します。設定は[Drive設定](docs/google-drive-setup.md)、外部送信方針は[セキュリティ](docs/security.md)を参照してください。
 
-- GPXファイル名は `walking-YYYY-MM-DD.gpx`
-- 自動バックアップはAndroid標準APIのJobSchedulerで毎日 02:30 ごろに前日分をGoogle Driveへ保存
-- Androidの省電力制御により、実行時刻は多少ずれることがあります
-- Drive連携にはGoogle Cloud ConsoleでDrive APIとAndroid OAuthクライアントの設定が必要です
+## Pixel Watchアイコン
 
-Health Connectの仕様上、他アプリが作成した運動ルートはバックグラウンドで読めない場合があります。Pixel Watch / Fitbitが作成したルートで同意が必要になった場合、自動バックアップは通知を出し、アプリ上の手動書き出しでルート読み取り同意を求めます。
-
-## セキュリティ
-
-セキュリティ方針と外部依存の扱いは [docs/security.md](docs/security.md) にまとめています。
+山と上向き矢印のベクターアイコンを使用します。スマホと時計で共通の図柄とし、円形マスクと単色テーマに対応しています。小さな表示での識別を優先しました。

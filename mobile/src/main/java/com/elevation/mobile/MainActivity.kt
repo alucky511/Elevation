@@ -32,7 +32,6 @@ import androidx.health.connect.client.records.ExerciseRoute
 import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.request.AggregateRequest
-import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
@@ -44,6 +43,7 @@ import com.google.android.gms.common.api.Scope
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
                     try {
                         collectRemainingElevationRoutes()
                     } catch (error: Throwable) {
+                        if (error is CancellationException) throw error
                         pendingElevationCalculation = null
                         showIdle(
                             "ルート高度の読み込みに失敗しました: " +
@@ -131,13 +132,18 @@ class MainActivity : ComponentActivity() {
                 }
                 showIdle("GPXを保存しました: ${pending.fileName}")
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 showIdle("GPXの保存に失敗しました: ${error.message ?: error.javaClass.simpleName}")
             }
         }
 
     private val requestDriveBackupAuthorization =
-        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
-            finishEnablingAutoBackup()
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                finishEnablingAutoBackup()
+            } else {
+                showIdle("Driveの認可が完了していないため、自動バックアップは有効にしていません。")
+            }
         }
 
     private val requestGoogleSignIn =
@@ -484,6 +490,7 @@ class MainActivity : ComponentActivity() {
                     collectRemainingElevationRoutes()
                 }
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 pendingElevationCalculation = null
                 showIdle("読み込みに失敗しました: ${error.message ?: error.javaClass.simpleName}")
             }
@@ -540,33 +547,15 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun calculateElevationGain(route: ExerciseRoute): Double {
-        val altitudeSamples =
-            route.route
-                .sortedBy { it.time }
-                .mapNotNull { point ->
-                    val altitude = point.altitude?.inMeters ?: return@mapNotNull null
-                    val verticalAccuracy = point.verticalAccuracy?.inMeters
-                    if (verticalAccuracy != null && verticalAccuracy > MAX_VERTICAL_ACCURACY_METERS) {
-                        null
-                    } else {
-                        altitude
-                    }
-                }
-        if (altitudeSamples.size < 2) return 0.0
-
-        val smoothed =
-            altitudeSamples.indices.map { index ->
-                val from = maxOf(0, index - ALTITUDE_SMOOTHING_RADIUS)
-                val to = minOf(altitudeSamples.lastIndex, index + ALTITUDE_SMOOTHING_RADIUS)
-                altitudeSamples.subList(from, to + 1).average()
+    private fun calculateElevationGain(route: ExerciseRoute): Double =
+        RouteElevationCalculator.calculate(
+            route.route.sortedBy { it.time }.map { point ->
+                RouteElevationCalculator.Sample(
+                    point.altitude?.inMeters,
+                    point.verticalAccuracy?.inMeters,
+                )
             }
-
-        return smoothed.zipWithNext().sumOf { (previous, current) ->
-            val gain = current - previous
-            if (gain in MIN_ELEVATION_STEP_METERS..MAX_ELEVATION_STEP_METERS) gain else 0.0
-        }
-    }
+        )
 
     private fun showElevationResult(
         meters: Double,
@@ -589,11 +578,12 @@ class MainActivity : ComponentActivity() {
                 val result = WearSync.send(applicationContext, value)
                 watchSyncStatusText.text =
                     if (result.connectedNodeCount > 0) {
-                        "Pixel Watch: 同期済み"
+                        "Pixel Watch: 送信済み（時計で表示を確認）"
                     } else {
                         "Pixel Watch: データ保存済み・接続待ち"
                     }
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 android.util.Log.e("ElevationWearSync", "Sync failed", error)
                 watchSyncStatusText.text =
                     "Pixel Watch: 同期失敗 (${error.message ?: error.javaClass.simpleName})"
@@ -632,6 +622,7 @@ class MainActivity : ComponentActivity() {
                     )
                 collectRemainingRoutesAndUpload()
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 showIdle("${date} のGPX書き出し準備に失敗しました: ${error.message ?: error.javaClass.simpleName}")
             }
         }
@@ -833,21 +824,7 @@ class MainActivity : ComponentActivity() {
     private suspend fun readTodayWalkingSessions(
         client: HealthConnectClient,
         window: TimeWindow
-    ): List<ExerciseSessionRecord> {
-        val response =
-            client.readRecords(
-                ReadRecordsRequest(
-                    recordType = ExerciseSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(window.start, window.end),
-                    ascendingOrder = true,
-                    pageSize = 1000
-                )
-            )
-
-        return response.records.filter { record ->
-            record.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
-        }
-    }
+    ): List<ExerciseSessionRecord> = WalkingSessionReader(client).read(window)
 
     private suspend fun readTodayElevationMeters(
         client: HealthConnectClient,
@@ -980,9 +957,5 @@ class MainActivity : ComponentActivity() {
             "android.permission.health.READ_EXERCISE_ROUTES"
         private const val MANAGE_HEALTH_PERMISSIONS_ACTION =
             "android.health.connect.action.MANAGE_HEALTH_PERMISSIONS"
-        private const val MAX_VERTICAL_ACCURACY_METERS = 30.0
-        private const val MIN_ELEVATION_STEP_METERS = 0.75
-        private const val MAX_ELEVATION_STEP_METERS = 30.0
-        private const val ALTITUDE_SMOOTHING_RADIUS = 2
     }
 }
