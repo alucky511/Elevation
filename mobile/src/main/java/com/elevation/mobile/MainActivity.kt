@@ -2,23 +2,15 @@ package com.elevation.mobile
 
 import android.Manifest
 import android.content.Intent
-import android.content.res.ColorStateList
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
 import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
 import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -52,6 +44,7 @@ class MainActivity : ComponentActivity() {
             HealthPermission.getReadPermission(ExerciseSessionRecord::class),
             HealthPermission.getReadPermission(ElevationGainedRecord::class)
         )
+    private lateinit var dashboard: MobileDashboardView
     private lateinit var elevationText: TextView
     private lateinit var detailText: TextView
     private lateinit var healthPermissionStatusText: TextView
@@ -171,7 +164,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         buildUi()
+        dashboard.showPage(savedInstanceState?.getInt("dashboard_page") ?: 0)
         updateAutoBackupUi()
         refreshTodaySummary(requestPermissionIfMissing = false)
     }
@@ -181,266 +177,67 @@ class MainActivity : ComponentActivity() {
         refreshHealthPermissionStatus()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("dashboard_page", dashboard.selectedPage)
+        super.onSaveInstanceState(outState)
+    }
+
     private fun buildUi() {
-        elevationText =
-            TextView(this).apply {
-                text = "-- m"
-                textSize = 52f
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#F5FFF9"))
-                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-                includeFontPadding = false
-            }
-        detailText =
-            TextView(this).apply {
-                text = "今日のウォーキングを読み込みます"
-                textSize = 15f
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#9DB7B0"))
-                minHeight = dp(28)
-            }
-        healthPermissionStatusText =
-            TextView(this).apply {
-                text = "Health Connect権限を確認しています…"
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#79D4B2"))
-                minHeight = dp(24)
-            }
-        watchSyncStatusText =
-            TextView(this).apply {
-                text = "Pixel Watch: 同期状態を確認します"
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#9DB7B0"))
-                minHeight = dp(24)
-            }
-        statusText =
-            TextView(this).apply {
-                text = ""
-                textSize = 13f
-                gravity = Gravity.CENTER
-                maxLines = 2
-                setTextColor(Color.parseColor("#87A39B"))
-            }
-        progressBar =
-            ProgressBar(this).apply {
-                visibility = View.INVISIBLE
-                indeterminateTintList = ColorStateList.valueOf(Color.parseColor("#9EF3C9"))
-            }
-        healthPermissionButton =
-            Button(this).apply {
-                text = "Health Connectの権限を許可"
-                styleButton(this, primary = true)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "Health Connectの権限を確認します…")
-                    lifecycleScope.launch {
-                        val client = healthConnectClientOrNull()
-                        if (client == null) {
-                            showIdle("Health Connectを利用できません。")
-                            return@launch
-                        }
-                        val granted = client.permissionController.getGrantedPermissions()
-                        if (granted.containsAll(requiredHealthPermissions)) {
-                            openHealthConnectPermissionSettings()
-                        } else {
-                            requestHealthPermissions.launch(requiredHealthPermissions)
-                        }
-                    }
+        dashboard = MobileDashboardView(this)
+        elevationText = dashboard.elevationText
+        detailText = dashboard.detailText
+        healthPermissionStatusText = dashboard.healthPermissionStatusText
+        watchSyncStatusText = dashboard.watchSyncStatusText
+        statusText = dashboard.statusText
+        progressBar = dashboard.progressBar
+        healthPermissionButton = dashboard.healthPermissionButton
+        refreshButton = dashboard.refreshButton
+        watchSyncButton = dashboard.watchSyncButton
+        exportGpxButton = dashboard.exportGpxButton
+        exportYesterdayGpxButton = dashboard.exportYesterdayGpxButton
+        autoBackupButton = dashboard.autoBackupButton
+        healthPermissionButton.setOnClickListener { view ->
+            acknowledgeTap(view, "Health Connectの権限を確認します…")
+            lifecycleScope.launch {
+                val client = healthConnectClientOrNull()
+                if (client == null) {
+                    showIdle("Health Connectを利用できません。")
+                    return@launch
                 }
-            }
-        refreshButton =
-            Button(this).apply {
-                text = "今日の累積標高を更新"
-                styleButton(this, primary = true)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "今日のデータを更新します…")
-                    refreshTodaySummary()
+                val granted = client.permissionController.getGrantedPermissions()
+                if (granted.containsAll(requiredHealthPermissions)) {
+                    openHealthConnectPermissionSettings()
+                } else {
+                    requestHealthPermissions.launch(requiredHealthPermissions)
                 }
-            }
-        watchSyncButton =
-            Button(this).apply {
-                text = "Pixel Watchへ再同期"
-                styleButton(this, primary = false)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "Pixel Watchへ再送します…")
-                    val latest = latestDailyElevation
-                    if (latest == null) {
-                        refreshTodaySummary()
-                    } else {
-                        syncToWatch(latest)
-                    }
-                }
-            }
-        exportGpxButton =
-            Button(this).apply {
-                text = "今日のGPXを保存"
-                styleButton(this, primary = false)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "今日のGPXを準備します…")
-                    startGpxExport(LocalDate.now(ZoneId.systemDefault()))
-                }
-            }
-        exportYesterdayGpxButton =
-            Button(this).apply {
-                text = "昨日のGPXを保存"
-                styleButton(this, primary = false)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "昨日のGPXを準備します…")
-                    startGpxExport(LocalDate.now(ZoneId.systemDefault()).minusDays(1))
-                }
-            }
-        autoBackupButton =
-            Button(this).apply {
-                styleButton(this, primary = false)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "自動バックアップ設定を確認します…")
-                    toggleAutoBackup()
-                }
-            }
-
-        val card =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(24), dp(28), dp(24), dp(24))
-                background =
-                    roundedBackground(
-                        fillColor = Color.parseColor("#0D222D"),
-                        radiusDp = 28,
-                        strokeColor = Color.parseColor("#1D3A44")
-                    )
-                addView(
-                    TextView(this@MainActivity).apply {
-                        text = "TODAY"
-                        textSize = 12f
-                        letterSpacing = 0.16f
-                        gravity = Gravity.CENTER
-                        setTextColor(Color.parseColor("#79D4B2"))
-                    },
-                    matchWrap()
-                )
-                addView(
-                    TextView(this@MainActivity).apply {
-                        text = "今日の累積標高"
-                        textSize = 20f
-                        gravity = Gravity.CENTER
-                        setTextColor(Color.parseColor("#DCECE7"))
-                        setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-                    },
-                    matchWrap()
-                )
-                addView(elevationText, matchWrap())
-                addView(detailText, matchWrap())
-                addView(healthPermissionStatusText, matchWrap())
-                addView(watchSyncStatusText, matchWrap())
-                addView(
-                    progressBar,
-                    LinearLayout.LayoutParams(dp(32), dp(32)).apply {
-                        topMargin = dp(12)
-                    }
-                )
-                addView(healthPermissionButton, matchWrap())
-                addView(refreshButton, matchWrap())
-                addView(watchSyncButton, matchWrap())
-                addView(exportGpxButton, matchWrap())
-                addView(exportYesterdayGpxButton, matchWrap())
-                addView(autoBackupButton, matchWrap())
-                addView(
-                    statusText,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(56)
-                    ).apply {
-                        topMargin = dp(10)
-                    }
-                )
-            }
-
-        val content =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(20), dp(24), dp(20), dp(24))
-                addView(
-                    card,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
-            }
-
-        val root =
-            ScrollView(this).apply {
-                isFillViewport = true
-                setBackgroundColor(Color.parseColor("#06131C"))
-                isVerticalScrollBarEnabled = false
-                addView(
-                    content,
-                    ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
-            }
-
-        setContentView(root)
-    }
-
-    private fun styleButton(button: Button, primary: Boolean) {
-        val fillColor =
-            Color.parseColor(if (primary) "#9EF3C9" else "#142D38")
-        val textColor =
-            Color.parseColor(if (primary) "#06202A" else "#DCECE7")
-        val strokeColor =
-            if (primary) null else Color.parseColor("#31515C")
-        val rippleColor =
-            Color.parseColor(if (primary) "#4DFFFFFF" else "#3379D4B2")
-
-        button.isAllCaps = false
-        button.textSize = 14f
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-        button.setTextColor(textColor)
-        button.minHeight = dp(52)
-        button.minimumHeight = dp(52)
-        button.stateListAnimator = null
-        button.elevation = 0f
-        button.setPadding(dp(16), 0, dp(16), 0)
-        button.background =
-            RippleDrawable(
-                ColorStateList.valueOf(rippleColor),
-                roundedBackground(fillColor, 16, strokeColor),
-                null
-            )
-        button.setOnTouchListener { view, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    view.scaleX = 0.98f
-                    view.scaleY = 0.98f
-                    view.alpha = 0.82f
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    view.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(110L).start()
-                }
-            }
-            false
-        }
-    }
-
-    private fun roundedBackground(
-        fillColor: Int,
-        radiusDp: Int,
-        strokeColor: Int? = null
-    ): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            color = ColorStateList.valueOf(fillColor)
-            cornerRadius = dp(radiusDp).toFloat()
-            if (strokeColor != null) {
-                setStroke(dp(1), strokeColor)
             }
         }
+        refreshButton.setOnClickListener { view ->
+            acknowledgeTap(view, "今日のデータを更新します…")
+            refreshTodaySummary()
+        }
+        watchSyncButton.setOnClickListener { view ->
+            acknowledgeTap(view, "Pixel Watchへ再送します…")
+            val latest = latestDailyElevation
+            if (latest == null) {
+                refreshTodaySummary()
+            } else {
+                syncToWatch(latest)
+            }
+        }
+        exportGpxButton.setOnClickListener { view ->
+            acknowledgeTap(view, "今日のGPXを準備します…")
+            startGpxExport(LocalDate.now(ZoneId.systemDefault()))
+        }
+        exportYesterdayGpxButton.setOnClickListener { view ->
+            acknowledgeTap(view, "昨日のGPXを準備します…")
+            startGpxExport(LocalDate.now(ZoneId.systemDefault()).minusDays(1))
+        }
+        autoBackupButton.setOnClickListener { view ->
+            acknowledgeTap(view, "自動バックアップ設定を確認します…")
+            toggleAutoBackup()
+        }
+        setContentView(dashboard)
     }
 
     private fun refreshTodaySummary(requestPermissionIfMissing: Boolean = true) {
@@ -916,19 +713,6 @@ class MainActivity : ComponentActivity() {
             } else {
                 "毎日のGPX自動バックアップをONにする"
             }
-    }
-
-    private fun matchWrap(): ViewGroup.LayoutParams {
-        return LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            topMargin = dp(10)
-        }
-    }
-
-    private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
     }
 
     private data class PendingElevationCalculation(

@@ -2,7 +2,7 @@
 <rect width="560" height="220" rx="20" fill="#EEF3F4"/>
 <text x="28" y="37" font-family="sans-serif" font-size="21" fill="#102B39">Elevation · launcher icon</text>
 <defs><clipPath id="round"><circle cx="54" cy="54" r="36"/></clipPath>
-<g id="icon" clip-path="url(#round)"><rect width="108" height="108" fill="#061A3A"/><path fill="#9EF3C9" d="M28,72 L43,44 L55,62 L62,53 L80,72 Z"/><path fill="#FFFDF7" d="M63,33 L80,33 L80,50 L74,50 L74,43 L61,56 L57,52 L70,39 L63,39 Z"/></g></defs>
+<g id="icon" clip-path="url(#round)"><rect width="108" height="108" fill="#061A3A"/><path fill="#9EF3C9" d="M30,76 L45,43 L58,64 L65,54 L78,76 Z"/><path fill="#FFFDF7" d="M58,30 L74,30 L74,46 L68,46 L68,40 L57,51 L53,47 L64,36 L58,36 Z"/></g></defs>
 <g transform="translate(24 70) scale(1.3333)"><use href="#icon"/></g>
 <g transform="translate(222 102) scale(.8889)"><use href="#icon"/></g>
 <g transform="translate(392 118) scale(.6667)"><use href="#icon"/></g>

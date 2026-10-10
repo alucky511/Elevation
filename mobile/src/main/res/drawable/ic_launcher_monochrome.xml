@@ -4,7 +4,7 @@
     android:viewportWidth="108" android:viewportHeight="108">
     <!-- Mountain + ascent arrow, kept inside the adaptive icon safe area. -->
     <path android:fillColor="#FFFFFFFF"
-        android:pathData="M28,72 L43,44 L55,62 L62,53 L80,72 Z" />
+        android:pathData="M30,76 L45,43 L58,64 L65,54 L78,76 Z" />
     <path android:fillColor="#FFFFFFFF"
-        android:pathData="M63,33 L80,33 L80,50 L74,50 L74,43 L61,56 L57,52 L70,39 L63,39 Z" />
+        android:pathData="M58,30 L74,30 L74,46 L68,46 L68,40 L57,51 L53,47 L64,36 L58,36 Z" />
 </vector>
