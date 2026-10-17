@@ -55,7 +55,7 @@ jobs:
           target: google_apis
           disable-animations: true
           script: |
-            gradle :mobile:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.additionalTestOutputDir=/sdcard/Android/data/com.elevation/files/ui-previews --stacktrace
+            gradle :mobile:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.additionalTestOutputDir=/sdcard/Android/media/com.elevation/additional_test_output --stacktrace
             test "$(find mobile/build/outputs -type f -name 'page-*.png' | wc -l)" -eq 18
       - name: Save UI previews and instrumentation reports
         if: always()
