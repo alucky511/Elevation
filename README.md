@@ -36,3 +36,9 @@ GitHub Actionsでも同じテスト・ビルド・Lintを実行します。
 ## Pixel Watchアイコン
 
 山と上向き矢印のベクターアイコンを使用します。スマホと時計で共通の図柄とし、円形マスクと単色テーマに対応しています。小さな表示での識別を優先しました。
+
+## スマホ画面と表示検証
+
+ホームで今日の標高とWatch同期を確認し、保存・設定でGPX出力、自動バックアップ、Health Connect権限を操作します。画面表示は `MobileDashboardView` に分離しています。
+
+Pixel 10a / Pixel Watch 4を実機確認の対象としています。Androidエミュレーターで3種類の画面幅と3段階の文字倍率について両ページを検査し、18枚の画像をActionsの `elevation-ui-previews` に保存します。APKは `elevation-debug-apks` から取得できます。[実機確認手順](docs/device-validation.md)を参照してください。実機確認は未実施です。

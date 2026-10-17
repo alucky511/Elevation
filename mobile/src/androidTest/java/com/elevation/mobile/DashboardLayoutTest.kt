@@ -52,7 +52,10 @@ class DashboardLayoutTest {
                         val canvas = Canvas(bitmap)
                         canvas.drawColor(Color.rgb(7, 20, 27))
                         content.draw(canvas)
-                        val directory = File(instrumentation.targetContext.getExternalFilesDir(null), "ui-previews")
+                        // Let Gradle collect images before it uninstalls the test app.
+                        val directory = InstrumentationRegistry.getArguments()
+                            .getString("additionalTestOutputDir")?.let { File(it) }
+                            ?: File(instrumentation.targetContext.getExternalFilesDir(null), "ui-previews")
                         directory.mkdirs()
                         File(directory, "page-${page}-width-${widthDp}-font-${scale}.png").outputStream().use {
                             bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
