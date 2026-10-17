@@ -6,8 +6,6 @@ import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.readRecord
 import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
-import androidx.health.connect.client.request.ReadRecordsRequest
-import androidx.health.connect.client.time.TimeRangeFilter
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -98,21 +96,8 @@ class GpxBackupRepository(private val context: Context) {
     private suspend fun readWalkingSessions(
         client: HealthConnectClient,
         window: TimeWindow
-    ): List<ExerciseSessionRecord> {
-        val response =
-            client.readRecords(
-                ReadRecordsRequest(
-                    recordType = ExerciseSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(window.start, window.end),
-                    ascendingOrder = true,
-                    pageSize = 1000
-                )
-            )
+    ): List<ExerciseSessionRecord> = WalkingSessionReader(client).read(window)
 
-        return response.records.filter { record ->
-            record.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
-        }
-    }
 }
 
 private const val HEALTH_CONNECT_PROVIDER_PACKAGE = "com.google.android.apps.healthdata"

@@ -2,23 +2,15 @@ package com.elevation.mobile
 
 import android.Manifest
 import android.content.Intent
-import android.content.res.ColorStateList
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
 import android.os.Build
 import android.os.Bundle
-import android.view.Gravity
 import android.view.HapticFeedbackConstants
-import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
-import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,7 +24,6 @@ import androidx.health.connect.client.records.ExerciseRoute
 import androidx.health.connect.client.records.ExerciseRouteResult
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.request.AggregateRequest
-import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
@@ -44,6 +35,7 @@ import com.google.android.gms.common.api.Scope
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -52,6 +44,7 @@ class MainActivity : ComponentActivity() {
             HealthPermission.getReadPermission(ExerciseSessionRecord::class),
             HealthPermission.getReadPermission(ElevationGainedRecord::class)
         )
+    private lateinit var dashboard: MobileDashboardView
     private lateinit var elevationText: TextView
     private lateinit var detailText: TextView
     private lateinit var healthPermissionStatusText: TextView
@@ -91,6 +84,7 @@ class MainActivity : ComponentActivity() {
                     try {
                         collectRemainingElevationRoutes()
                     } catch (error: Throwable) {
+                        if (error is CancellationException) throw error
                         pendingElevationCalculation = null
                         showIdle(
                             "ルート高度の読み込みに失敗しました: " +
@@ -131,13 +125,18 @@ class MainActivity : ComponentActivity() {
                 }
                 showIdle("GPXを保存しました: ${pending.fileName}")
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 showIdle("GPXの保存に失敗しました: ${error.message ?: error.javaClass.simpleName}")
             }
         }
 
     private val requestDriveBackupAuthorization =
-        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) {
-            finishEnablingAutoBackup()
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+            if (result.resultCode == RESULT_OK) {
+                finishEnablingAutoBackup()
+            } else {
+                showIdle("Driveの認可が完了していないため、自動バックアップは有効にしていません。")
+            }
         }
 
     private val requestGoogleSignIn =
@@ -165,7 +164,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         buildUi()
+        dashboard.showPage(savedInstanceState?.getInt("dashboard_page") ?: 0)
         updateAutoBackupUi()
         refreshTodaySummary(requestPermissionIfMissing = false)
     }
@@ -175,266 +177,67 @@ class MainActivity : ComponentActivity() {
         refreshHealthPermissionStatus()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt("dashboard_page", dashboard.selectedPage)
+        super.onSaveInstanceState(outState)
+    }
+
     private fun buildUi() {
-        elevationText =
-            TextView(this).apply {
-                text = "-- m"
-                textSize = 52f
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#F5FFF9"))
-                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-                includeFontPadding = false
-            }
-        detailText =
-            TextView(this).apply {
-                text = "今日のウォーキングを読み込みます"
-                textSize = 15f
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#9DB7B0"))
-                minHeight = dp(28)
-            }
-        healthPermissionStatusText =
-            TextView(this).apply {
-                text = "Health Connect権限を確認しています…"
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#79D4B2"))
-                minHeight = dp(24)
-            }
-        watchSyncStatusText =
-            TextView(this).apply {
-                text = "Pixel Watch: 同期状態を確認します"
-                textSize = 12f
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#9DB7B0"))
-                minHeight = dp(24)
-            }
-        statusText =
-            TextView(this).apply {
-                text = ""
-                textSize = 13f
-                gravity = Gravity.CENTER
-                maxLines = 2
-                setTextColor(Color.parseColor("#87A39B"))
-            }
-        progressBar =
-            ProgressBar(this).apply {
-                visibility = View.INVISIBLE
-                indeterminateTintList = ColorStateList.valueOf(Color.parseColor("#9EF3C9"))
-            }
-        healthPermissionButton =
-            Button(this).apply {
-                text = "Health Connectの権限を許可"
-                styleButton(this, primary = true)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "Health Connectの権限を確認します…")
-                    lifecycleScope.launch {
-                        val client = healthConnectClientOrNull()
-                        if (client == null) {
-                            showIdle("Health Connectを利用できません。")
-                            return@launch
-                        }
-                        val granted = client.permissionController.getGrantedPermissions()
-                        if (granted.containsAll(requiredHealthPermissions)) {
-                            openHealthConnectPermissionSettings()
-                        } else {
-                            requestHealthPermissions.launch(requiredHealthPermissions)
-                        }
-                    }
+        dashboard = MobileDashboardView(this)
+        elevationText = dashboard.elevationText
+        detailText = dashboard.detailText
+        healthPermissionStatusText = dashboard.healthPermissionStatusText
+        watchSyncStatusText = dashboard.watchSyncStatusText
+        statusText = dashboard.statusText
+        progressBar = dashboard.progressBar
+        healthPermissionButton = dashboard.healthPermissionButton
+        refreshButton = dashboard.refreshButton
+        watchSyncButton = dashboard.watchSyncButton
+        exportGpxButton = dashboard.exportGpxButton
+        exportYesterdayGpxButton = dashboard.exportYesterdayGpxButton
+        autoBackupButton = dashboard.autoBackupButton
+        healthPermissionButton.setOnClickListener { view ->
+            acknowledgeTap(view, "Health Connectの権限を確認します…")
+            lifecycleScope.launch {
+                val client = healthConnectClientOrNull()
+                if (client == null) {
+                    showIdle("Health Connectを利用できません。")
+                    return@launch
                 }
-            }
-        refreshButton =
-            Button(this).apply {
-                text = "今日の累積標高を更新"
-                styleButton(this, primary = true)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "今日のデータを更新します…")
-                    refreshTodaySummary()
+                val granted = client.permissionController.getGrantedPermissions()
+                if (granted.containsAll(requiredHealthPermissions)) {
+                    openHealthConnectPermissionSettings()
+                } else {
+                    requestHealthPermissions.launch(requiredHealthPermissions)
                 }
-            }
-        watchSyncButton =
-            Button(this).apply {
-                text = "Pixel Watchへ再同期"
-                styleButton(this, primary = false)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "Pixel Watchへ再送します…")
-                    val latest = latestDailyElevation
-                    if (latest == null) {
-                        refreshTodaySummary()
-                    } else {
-                        syncToWatch(latest)
-                    }
-                }
-            }
-        exportGpxButton =
-            Button(this).apply {
-                text = "今日のGPXを保存"
-                styleButton(this, primary = false)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "今日のGPXを準備します…")
-                    startGpxExport(LocalDate.now(ZoneId.systemDefault()))
-                }
-            }
-        exportYesterdayGpxButton =
-            Button(this).apply {
-                text = "昨日のGPXを保存"
-                styleButton(this, primary = false)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "昨日のGPXを準備します…")
-                    startGpxExport(LocalDate.now(ZoneId.systemDefault()).minusDays(1))
-                }
-            }
-        autoBackupButton =
-            Button(this).apply {
-                styleButton(this, primary = false)
-                setOnClickListener { view ->
-                    acknowledgeTap(view, "自動バックアップ設定を確認します…")
-                    toggleAutoBackup()
-                }
-            }
-
-        val card =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(24), dp(28), dp(24), dp(24))
-                background =
-                    roundedBackground(
-                        fillColor = Color.parseColor("#0D222D"),
-                        radiusDp = 28,
-                        strokeColor = Color.parseColor("#1D3A44")
-                    )
-                addView(
-                    TextView(this@MainActivity).apply {
-                        text = "TODAY"
-                        textSize = 12f
-                        letterSpacing = 0.16f
-                        gravity = Gravity.CENTER
-                        setTextColor(Color.parseColor("#79D4B2"))
-                    },
-                    matchWrap()
-                )
-                addView(
-                    TextView(this@MainActivity).apply {
-                        text = "今日の累積標高"
-                        textSize = 20f
-                        gravity = Gravity.CENTER
-                        setTextColor(Color.parseColor("#DCECE7"))
-                        setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-                    },
-                    matchWrap()
-                )
-                addView(elevationText, matchWrap())
-                addView(detailText, matchWrap())
-                addView(healthPermissionStatusText, matchWrap())
-                addView(watchSyncStatusText, matchWrap())
-                addView(
-                    progressBar,
-                    LinearLayout.LayoutParams(dp(32), dp(32)).apply {
-                        topMargin = dp(12)
-                    }
-                )
-                addView(healthPermissionButton, matchWrap())
-                addView(refreshButton, matchWrap())
-                addView(watchSyncButton, matchWrap())
-                addView(exportGpxButton, matchWrap())
-                addView(exportYesterdayGpxButton, matchWrap())
-                addView(autoBackupButton, matchWrap())
-                addView(
-                    statusText,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        dp(56)
-                    ).apply {
-                        topMargin = dp(10)
-                    }
-                )
-            }
-
-        val content =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setPadding(dp(20), dp(24), dp(20), dp(24))
-                addView(
-                    card,
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
-            }
-
-        val root =
-            ScrollView(this).apply {
-                isFillViewport = true
-                setBackgroundColor(Color.parseColor("#06131C"))
-                isVerticalScrollBarEnabled = false
-                addView(
-                    content,
-                    ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                )
-            }
-
-        setContentView(root)
-    }
-
-    private fun styleButton(button: Button, primary: Boolean) {
-        val fillColor =
-            Color.parseColor(if (primary) "#9EF3C9" else "#142D38")
-        val textColor =
-            Color.parseColor(if (primary) "#06202A" else "#DCECE7")
-        val strokeColor =
-            if (primary) null else Color.parseColor("#31515C")
-        val rippleColor =
-            Color.parseColor(if (primary) "#4DFFFFFF" else "#3379D4B2")
-
-        button.isAllCaps = false
-        button.textSize = 14f
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-        button.setTextColor(textColor)
-        button.minHeight = dp(52)
-        button.minimumHeight = dp(52)
-        button.stateListAnimator = null
-        button.elevation = 0f
-        button.setPadding(dp(16), 0, dp(16), 0)
-        button.background =
-            RippleDrawable(
-                ColorStateList.valueOf(rippleColor),
-                roundedBackground(fillColor, 16, strokeColor),
-                null
-            )
-        button.setOnTouchListener { view, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    view.scaleX = 0.98f
-                    view.scaleY = 0.98f
-                    view.alpha = 0.82f
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    view.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(110L).start()
-                }
-            }
-            false
-        }
-    }
-
-    private fun roundedBackground(
-        fillColor: Int,
-        radiusDp: Int,
-        strokeColor: Int? = null
-    ): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            color = ColorStateList.valueOf(fillColor)
-            cornerRadius = dp(radiusDp).toFloat()
-            if (strokeColor != null) {
-                setStroke(dp(1), strokeColor)
             }
         }
+        refreshButton.setOnClickListener { view ->
+            acknowledgeTap(view, "今日のデータを更新します…")
+            refreshTodaySummary()
+        }
+        watchSyncButton.setOnClickListener { view ->
+            acknowledgeTap(view, "Pixel Watchへ再送します…")
+            val latest = latestDailyElevation
+            if (latest == null) {
+                refreshTodaySummary()
+            } else {
+                syncToWatch(latest)
+            }
+        }
+        exportGpxButton.setOnClickListener { view ->
+            acknowledgeTap(view, "今日のGPXを準備します…")
+            startGpxExport(LocalDate.now(ZoneId.systemDefault()))
+        }
+        exportYesterdayGpxButton.setOnClickListener { view ->
+            acknowledgeTap(view, "昨日のGPXを準備します…")
+            startGpxExport(LocalDate.now(ZoneId.systemDefault()).minusDays(1))
+        }
+        autoBackupButton.setOnClickListener { view ->
+            acknowledgeTap(view, "自動バックアップ設定を確認します…")
+            toggleAutoBackup()
+        }
+        setContentView(dashboard)
     }
 
     private fun refreshTodaySummary(requestPermissionIfMissing: Boolean = true) {
@@ -484,6 +287,7 @@ class MainActivity : ComponentActivity() {
                     collectRemainingElevationRoutes()
                 }
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 pendingElevationCalculation = null
                 showIdle("読み込みに失敗しました: ${error.message ?: error.javaClass.simpleName}")
             }
@@ -540,33 +344,15 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun calculateElevationGain(route: ExerciseRoute): Double {
-        val altitudeSamples =
-            route.route
-                .sortedBy { it.time }
-                .mapNotNull { point ->
-                    val altitude = point.altitude?.inMeters ?: return@mapNotNull null
-                    val verticalAccuracy = point.verticalAccuracy?.inMeters
-                    if (verticalAccuracy != null && verticalAccuracy > MAX_VERTICAL_ACCURACY_METERS) {
-                        null
-                    } else {
-                        altitude
-                    }
-                }
-        if (altitudeSamples.size < 2) return 0.0
-
-        val smoothed =
-            altitudeSamples.indices.map { index ->
-                val from = maxOf(0, index - ALTITUDE_SMOOTHING_RADIUS)
-                val to = minOf(altitudeSamples.lastIndex, index + ALTITUDE_SMOOTHING_RADIUS)
-                altitudeSamples.subList(from, to + 1).average()
+    private fun calculateElevationGain(route: ExerciseRoute): Double =
+        RouteElevationCalculator.calculate(
+            route.route.sortedBy { it.time }.map { point ->
+                RouteElevationCalculator.Sample(
+                    point.altitude?.inMeters,
+                    point.verticalAccuracy?.inMeters,
+                )
             }
-
-        return smoothed.zipWithNext().sumOf { (previous, current) ->
-            val gain = current - previous
-            if (gain in MIN_ELEVATION_STEP_METERS..MAX_ELEVATION_STEP_METERS) gain else 0.0
-        }
-    }
+        )
 
     private fun showElevationResult(
         meters: Double,
@@ -589,11 +375,12 @@ class MainActivity : ComponentActivity() {
                 val result = WearSync.send(applicationContext, value)
                 watchSyncStatusText.text =
                     if (result.connectedNodeCount > 0) {
-                        "Pixel Watch: 同期済み"
+                        "Pixel Watch: 送信済み（時計で表示を確認）"
                     } else {
                         "Pixel Watch: データ保存済み・接続待ち"
                     }
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 android.util.Log.e("ElevationWearSync", "Sync failed", error)
                 watchSyncStatusText.text =
                     "Pixel Watch: 同期失敗 (${error.message ?: error.javaClass.simpleName})"
@@ -632,6 +419,7 @@ class MainActivity : ComponentActivity() {
                     )
                 collectRemainingRoutesAndUpload()
             } catch (error: Throwable) {
+                if (error is CancellationException) throw error
                 showIdle("${date} のGPX書き出し準備に失敗しました: ${error.message ?: error.javaClass.simpleName}")
             }
         }
@@ -833,21 +621,7 @@ class MainActivity : ComponentActivity() {
     private suspend fun readTodayWalkingSessions(
         client: HealthConnectClient,
         window: TimeWindow
-    ): List<ExerciseSessionRecord> {
-        val response =
-            client.readRecords(
-                ReadRecordsRequest(
-                    recordType = ExerciseSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(window.start, window.end),
-                    ascendingOrder = true,
-                    pageSize = 1000
-                )
-            )
-
-        return response.records.filter { record ->
-            record.exerciseType == ExerciseSessionRecord.EXERCISE_TYPE_WALKING
-        }
-    }
+    ): List<ExerciseSessionRecord> = WalkingSessionReader(client).read(window)
 
     private suspend fun readTodayElevationMeters(
         client: HealthConnectClient,
@@ -941,19 +715,6 @@ class MainActivity : ComponentActivity() {
             }
     }
 
-    private fun matchWrap(): ViewGroup.LayoutParams {
-        return LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply {
-            topMargin = dp(10)
-        }
-    }
-
-    private fun dp(value: Int): Int {
-        return (value * resources.displayMetrics.density).toInt()
-    }
-
     private data class PendingElevationCalculation(
         val sessions: List<ExerciseSessionRecord>,
         var index: Int,
@@ -980,9 +741,5 @@ class MainActivity : ComponentActivity() {
             "android.permission.health.READ_EXERCISE_ROUTES"
         private const val MANAGE_HEALTH_PERMISSIONS_ACTION =
             "android.health.connect.action.MANAGE_HEALTH_PERMISSIONS"
-        private const val MAX_VERTICAL_ACCURACY_METERS = 30.0
-        private const val MIN_ELEVATION_STEP_METERS = 0.75
-        private const val MAX_ELEVATION_STEP_METERS = 30.0
-        private const val ALTITUDE_SMOOTHING_RADIUS = 2
     }
 }

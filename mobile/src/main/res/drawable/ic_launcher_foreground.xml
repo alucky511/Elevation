@@ -1,30 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-
-    <!-- 歩行と高低差を、小さな表示でも崩れにくい2要素に限定 -->
-    <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M28,76 L39,76 L39,66 L53,66 L53,56 L67,56 L67,46 L80,46"
-        android:strokeColor="#9EF3C9"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:strokeWidth="5.5" />
-
-    <!-- 歩行者の頭 -->
-    <path
-        android:fillColor="#FFFDF7"
-        android:pathData="M44,29 C47,29 49,31 49,34 C49,37 47,39 44,39 C41,39 39,37 39,34 C39,31 41,29 44,29 Z" />
-
-    <!-- 歩行者の胴体・腕・脚 -->
-    <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M42,44 L39,55 L47,61 L45,72 M42,47 L50,52 L56,50 M47,61 L54,66 L60,66"
-        android:strokeColor="#FFFDF7"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:strokeWidth="6.5" />
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Mountain + ascent arrow, kept inside the adaptive icon safe area. -->
+    <path android:fillColor="#9EF3C9"
+        android:pathData="M30,76 L45,43 L58,64 L65,54 L78,76 Z" />
+    <path android:fillColor="#FFFDF7"
+        android:pathData="M58,30 L74,30 L74,46 L68,46 L68,40 L57,51 L53,47 L64,36 L58,36 Z" />
 </vector>

@@ -16,9 +16,9 @@
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:icon="@mipmap/ic_walk_elevation_v3"
+        android:icon="@mipmap/ic_elevation_launcher"
         android:label="Elevation"
-        android:roundIcon="@mipmap/ic_walk_elevation_v3_round"
+        android:roundIcon="@mipmap/ic_elevation_launcher_round"
         android:usesCleartextTraffic="false"
         android:theme="@style/Theme.Elevation">
         <activity

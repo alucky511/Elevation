@@ -35,17 +35,29 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContentView(buildContent())
         render()
-        loadLatestSyncedValue()
     }
 
     override fun onStart() {
         super.onStart()
         if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(receiver, IntentFilter(ElevationStore.ACTION_UPDATED), RECEIVER_NOT_EXPORTED)
+            registerReceiver(receiver, updateFilter(), RECEIVER_NOT_EXPORTED)
         } else {
             @Suppress("DEPRECATION")
-            registerReceiver(receiver, IntentFilter(ElevationStore.ACTION_UPDATED))
+            registerReceiver(receiver, updateFilter())
         }
+    }
+
+    private fun updateFilter() = IntentFilter(ElevationStore.ACTION_UPDATED).apply {
+        addAction(Intent.ACTION_DATE_CHANGED)
+        addAction(Intent.ACTION_TIME_CHANGED)
+        addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        addAction(Intent.ACTION_TIME_TICK)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        render()
+        loadLatestSyncedValue()
     }
 
     override fun onStop() {
@@ -60,12 +72,12 @@ class MainActivity : ComponentActivity() {
             detail.text = "スマホで更新すると\n自動で同期します"
             return
         }
-        value.text = "${data.meters.roundToInt()} m"
-        val sameDay = data.date == LocalDate.now().toString()
+        val sameDay = data.isForDay(LocalDate.now())
+        value.text = if (sameDay) "${data.meters.roundToInt()} m" else "-- m"
         detail.text = if (sameDay) {
             "ウォーキング ${data.walkingCount}件  •  ${formatTime(data.updatedAt)}更新"
         } else {
-            "${data.date} の記録\nスマホで今日の値を更新"
+            "最終記録 ${data.date}\nスマホで今日の値を更新"
         }
     }
 
@@ -76,13 +88,12 @@ class MainActivity : ComponentActivity() {
                     val latest =
                         items
                             .filter { it.uri.path == ElevationDataService.PATH }
-                            .maxByOrNull {
-                                DataMapItem.fromDataItem(it).dataMap.getLong("updatedAt")
-                            }
+                            .mapNotNull { ElevationStore.decode(DataMapItem.fromDataItem(it).dataMap) }
+                            .maxByOrNull { it.updatedAt }
                     if (latest != null) {
                         ElevationStore.save(
                             this,
-                            DataMapItem.fromDataItem(latest).dataMap
+                            latest
                         )
                     }
                     Log.i("ElevationWearSync", "Startup data items=${items.count}")
